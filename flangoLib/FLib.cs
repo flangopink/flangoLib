@@ -188,7 +188,7 @@ namespace flangoLib
         /// Список всех доступных типов столбцов.
         /// <para>"ФИО", "Ф_Инициалы", "Инициалы_Ф", "Имя", "Фамилия", "Отчество", "Адрес", "Телефон", "Паспорт"</para>
         /// </summary>
-        public static readonly List<string> ColumnTypes = new() { "ФИО", "Ф_Иниц", "Иниц_Ф", "Имя", "Фамилия", "Отчество", "Адрес", "Телефон", "Паспорт" };
+        public static readonly List<string> TypesList = new() { "ФИО", "Ф_Иниц", "Иниц_Ф", "Имя", "Фамилия", "Отчество", "Адрес", "Телефон", "Паспорт" };
 
         /// <summary>
         /// Словарь всех доступных типов столбцов.
@@ -198,7 +198,7 @@ namespace flangoLib
         ///     [9] = "Паспорт" 
         /// </para>
         /// </summary>
-        public static readonly Dictionary<int, string> ColumnTypesDict = new()
+        public static readonly Dictionary<int, string> TypesDict = new()
         { [1] = "ФИО", [2] = "Ф_Иниц", [3] = "Иниц_Ф", [4] = "Имя",
           [5] = "Фамилия", [6] = "Отчество", [7] = "Адрес", [8] = "Телефон",
           [9] = "Паспорт" 
@@ -209,7 +209,7 @@ namespace flangoLib
         /// </summary>
         /// <remarks>
         /// ---------- Параметры ----------
-        /// <para> ★ <see langword="List&lt;string&gt;"/> <paramref name="types"/> - Список типов вывода для каждого столбца соответственно. (см. <see cref="ColumnTypes"/>)</para>
+        /// <para> ★ <see langword="List&lt;string&gt;"/> <paramref name="types"/> - Список типов вывода для каждого столбца соответственно. (см. <see cref="TypesList"/>)</para>
         /// <para> (o) <see langword="int"/> <paramref name="count"/> - Количество строк. (def: 1)</para>
         /// <para> (o) <see langword="string"/> <paramref name="tableName"/> - Имя таблицы. (def и при "": &lt;Table Name&gt;)</para>
         /// </remarks>
@@ -323,9 +323,9 @@ namespace flangoLib
         /// <summary>
         /// Выводит словарь с курсом валюты из Центробанка.
         /// </summary>
-        public static Dictionary<string, double> GetCurrencyRates()
+        public static Dictionary<string, string> GetCurrencyRates()
         {
-            Dictionary<string, double> dict = new();
+            Dictionary<string, string> dict = new();
 
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -366,7 +366,7 @@ namespace flangoLib
                                         xmlNode = currentXMLDocument.SelectSingleNode("Valute/Value");
                                         row[1] = xmlNode!.InnerText;
 
-                                        dict.Add(row[0], double.Parse(row[1]));
+                                        dict.Add(row[0], row[1].Replace(',','.'));
                                     }
                                 }
                             }
@@ -376,6 +376,60 @@ namespace flangoLib
             }
 
             return dict;
+        }
+
+        /// <summary>
+        /// (Без ID) Генерирует текст запроса SQL типа <c>insert into [Table] values (currency, value);</c> с данными о курсе валют из Центробанка.
+        /// </summary>
+        /// <remarks>
+        /// ⚠⚠ Примечание: Использование этого запроса очистит таблицу перед заполнением её новыми данными! ⚠⚠
+        /// <para>---------- Параметры ----------</para>
+        /// <para> (o) <see langword="string"/> <paramref name="tableName"/> - Имя таблицы. (def и при "": &lt;Table Name&gt;)</para>
+        /// </remarks>
+        public static string GenerateCurrencyRateInsertQuery(string tableName = "<TableName>")
+        {
+            if (tableName == "") tableName = "<TableName>";
+
+            string sql = $"truncate table {tableName} insert into {tableName} values ";
+
+            foreach (KeyValuePair<string, string> kvp in GetCurrencyRates())
+            {
+                sql += $"('{kvp.Key}', {kvp.Value}),";
+            }
+
+            sql = sql.TrimEnd(',')+';';
+
+            return sql;
+        }
+
+        /// <summary>
+        /// (С ID) Генерирует текст запроса SQL типа <c>insert into [Table] values (currency, value);</c> с данными о курсе валют из Центробанка.
+        /// </summary>
+        /// <remarks>
+        /// ⚠⚠ Примечание: Использование этого запроса очистит таблицу перед заполнением её новыми данными! ⚠⚠
+        /// <para>---------- Параметры ----------</para>
+        /// <para> ★ <see langword="string"/> <paramref name="column_id"/> - Название столбца ID (первичного ключа типа <see langword="int"/>) (например, id, money_id).</para>
+        /// <para> ★ <see langword="string"/> <paramref name="column1"/> - Название первого столбца. (например, Валюта, Название, Currency)</para>
+        /// <para> ★ <see langword="string"/> <paramref name="column2"/> - Название второго столбца. (например, Курс, Стоимость, Value)</para>
+        /// <para> (o) <see langword="string"/> <paramref name="tableName"/> - Имя таблицы. (def и при "": &lt;Table Name&gt;)</para>
+        /// </remarks>
+        public static string GenerateCurrencyRateInsertQuery_WithID(string column_id, string column1, string column2, string tableName = "<TableName>")
+        {
+            if (tableName == "") tableName = "<TableName>";
+
+            string sql = $"SET IDENTITY_INSERT {tableName} ON; truncate table {tableName} insert into {tableName}" +
+                $" ({column_id}, {column1}, {column2}) values ";
+
+            int i = 0;
+
+            foreach (KeyValuePair<string, string> kvp in GetCurrencyRates())
+            {
+                sql += $"({++i}, '{kvp.Key}', {kvp.Value}),";
+            }
+
+            sql = sql.TrimEnd(',') + $"; SET IDENTITY_INSERT {tableName} OFF;";
+
+            return sql;
         }
     }
 }
